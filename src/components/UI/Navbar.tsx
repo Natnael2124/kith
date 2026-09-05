@@ -26,7 +26,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenSettings,
   onOpenAuth,
 }) => {
-  const { profile, toggleRestMode, isSandbox, signOut } = useAuth();
+  const { profile, toggleRestMode, signOut } = useAuth();
   const { caravan } = useCaravan();
 
   const archetypeInfo = profile ? ARCHETYPES[profile.archetype] : ARCHETYPES.Wayfarer;
@@ -166,19 +166,27 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             onClick={onOpenSettings}
             className="p-2 text-stone-400 hover:text-stone-100 rounded-xl bg-stone-900/80 border border-stone-800 hover:bg-stone-800 transition"
-            title="Settings (BYOK AI, Supabase, Sound)"
+            title="Settings (BYOK AI, Sound, Profile)"
           >
             <Settings className="w-4 h-4" />
           </button>
 
-          {/* Auth Trigger if Supabase active */}
-          {!isSandbox && (
+          {/* Auth Trigger / Sign Out */}
+          {profile ? (
             <button
-              onClick={profile ? signOut : onOpenAuth}
-              className="p-2 text-stone-400 hover:text-stone-100 rounded-xl bg-stone-900/80 border border-stone-800 hover:bg-stone-800 transition"
-              title={profile ? 'Sign Out' : 'Sign In'}
+              onClick={signOut}
+              className="p-2 text-stone-400 hover:text-rose-400 rounded-xl bg-stone-900/80 border border-stone-800 hover:bg-stone-800 transition"
+              title="Sign Out of Hearth"
             >
-              {profile ? <LogOut className="w-4 h-4" /> : <LogIn className="w-4 h-4" />}
+              <LogOut className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              onClick={onOpenAuth}
+              className="p-2 text-stone-400 hover:text-amber-400 rounded-xl bg-stone-900/80 border border-stone-800 hover:bg-stone-800 transition"
+              title="Sign In"
+            >
+              <LogIn className="w-4 h-4" />
             </button>
           )}
         </div>

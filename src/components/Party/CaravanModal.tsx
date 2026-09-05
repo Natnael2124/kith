@@ -5,9 +5,14 @@ import { useCaravan } from '../../context/CaravanContext';
 interface CaravanModalProps {
   isOpen: boolean;
   onClose: () => void;
+  canClose?: boolean;
 }
 
-export const CaravanModal: React.FC<CaravanModalProps> = ({ isOpen, onClose }) => {
+export const CaravanModal: React.FC<CaravanModalProps> = ({
+  isOpen,
+  onClose,
+  canClose = true,
+}) => {
   const { createCaravan, joinCaravanByCode } = useCaravan();
   const [tab, setTab] = useState<'create' | 'join'>('create');
   const [name, setName] = useState('');
@@ -22,6 +27,7 @@ export const CaravanModal: React.FC<CaravanModalProps> = ({ isOpen, onClose }) =
     e.preventDefault();
     if (!name.trim()) return;
     setIsSubmitting(true);
+    setErrorMsg('');
     try {
       await createCaravan(name.trim(), motto.trim());
       onClose();
@@ -52,23 +58,29 @@ export const CaravanModal: React.FC<CaravanModalProps> = ({ isOpen, onClose }) =
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="bg-stone-900 border border-stone-800 w-full max-w-md rounded-2xl p-6 shadow-2xl relative">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-stone-400 hover:text-stone-200 p-1.5 rounded-lg hover:bg-stone-800 transition"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        {canClose && (
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 text-stone-400 hover:text-stone-200 p-1.5 rounded-lg hover:bg-stone-800 transition"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
 
         <div className="flex items-center gap-3 mb-5">
           <div className="w-11 h-11 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
             <Users className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-stone-100">Caravan Fellowship</h3>
+            <h3 className="text-lg font-bold text-stone-100">
+              {!canClose ? 'Join or Found a Caravan' : 'Caravan Fellowship'}
+            </h3>
             <p className="text-xs text-stone-400">
-              Found a new fellowship or join an existing caravan with an invite code.
+              {!canClose
+                ? 'Before tending the campfire, join an expedition or found your own.'
+                : 'Found a new fellowship or join an existing caravan with an invite code.'}
             </p>
           </div>
         </div>

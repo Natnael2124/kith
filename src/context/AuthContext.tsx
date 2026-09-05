@@ -1,94 +1,117 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Archetype, Profile } from '../types';
-import { sandboxStore, supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
+import { User } from '@supabase/supabase-js';
 
 interface AuthContextType {
+  user: User | null;
   profile: Profile | null;
   loading: boolean;
-  isSandbox: boolean;
   updateProfile: (updates: Partial<Profile>) => Promise<void>;
   toggleRestMode: () => Promise<boolean>;
-  switchSandboxUser: (userId: string) => void;
   signInWithEmail: (email: string, pass: string) => Promise<{ error: Error | null }>;
   signUpWithEmail: (email: string, pass: string, username: string, archetype: Archetype) => Promise<{ error: Error | null }>;
+  signInWithGitHub: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const isSandbox = !supabase;
 
-  // Load profile
-  const fetchSupabaseProfile = async (userId: string) => {
-    if (!supabase) return;
+  // Fetch or auto-create profile
+  const fetchOrSyncProfile = async (authUser: User) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', userId)
-        .single();
-      if (error) {
+        .eq('id', authUser.id)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
         console.warn('Error fetching Supabase profile:', error);
-      } else if (data) {
+      }
+
+      if (data) {
         setProfile(data as Profile);
+        return;
+      }
+
+      // Profile does not exist yet (e.g. GitHub OAuth or trigger delay)
+      const username =
+        authUser.user_metadata?.username ||
+        authUser.user_metadata?.user_name ||
+        authUser.user_metadata?.name ||
+        authUser.email?.split('@')[0] ||
+        `Scout_${authUser.id.slice(0, 5)}`;
+
+      const archetype: Archetype = (authUser.user_metadata?.archetype as Archetype) || 'Wayfarer';
+      const avatarUrl =
+        authUser.user_metadata?.avatar_url ||
+        `https://api.dicebear.com/7.x/bottts/svg?seed=${authUser.id}`;
+
+      const { data: newProfile, error: upsertErr } = await supabase
+        .from('profiles')
+        .upsert({
+          id: authUser.id,
+          username,
+          archetype,
+          avatar_url: avatarUrl,
+        })
+        .select()
+        .single();
+
+      if (!upsertErr && newProfile) {
+        setProfile(newProfile as Profile);
       }
     } catch (err) {
-      console.error('Fetch profile err:', err);
+      console.error('fetchOrSyncProfile error:', err);
     }
   };
 
+  const refreshProfile = async () => {
+    if (!user) return;
+    await fetchOrSyncProfile(user);
+  };
+
   useEffect(() => {
-    if (isSandbox) {
-      // Sandbox mode
-      setProfile(sandboxStore.getCurrentUser());
-      const unsub = sandboxStore.subscribe(() => {
-        setProfile(sandboxStore.getCurrentUser());
-      });
-      setLoading(false);
-      return unsub;
-    }
-
-    // Live Supabase Mode
-    const initAuth = async () => {
-      if (!supabase) return;
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
+    // Initial session check
+    supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        await fetchSupabaseProfile(session.user.id);
+        setUser(session.user);
+        fetchOrSyncProfile(session.user).finally(() => setLoading(false));
+      } else {
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+      }
+    });
+
+    // Listen to real-time auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+        await fetchOrSyncProfile(session.user);
+      } else {
+        setUser(null);
+        setProfile(null);
       }
       setLoading(false);
+    });
 
-      const {
-        data: { subscription },
-      } = supabase.auth.onAuthStateChange(async (_event, session) => {
-        if (session?.user) {
-          await fetchSupabaseProfile(session.user.id);
-        } else {
-          setProfile(null);
-        }
-      });
-
-      return () => {
-        subscription.unsubscribe();
-      };
+    return () => {
+      subscription.unsubscribe();
     };
-
-    initAuth();
-  }, [isSandbox]);
+  }, []);
 
   const updateProfile = async (updates: Partial<Profile>) => {
-    if (isSandbox) {
-      sandboxStore.updateProfile(updates);
-      setProfile(sandboxStore.getCurrentUser());
-      return;
-    }
-
-    if (!supabase || !profile) return;
+    if (!profile) return;
     const { data, error } = await supabase
       .from('profiles')
       .update(updates)
@@ -101,40 +124,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const toggleRestMode = async (): Promise<boolean> => {
-    if (isSandbox) {
-      const newRest = sandboxStore.toggleRestMode();
-      setProfile(sandboxStore.getCurrentUser());
-      return newRest;
-    }
-
-    if (!supabase || !profile) return false;
+    if (!profile) return false;
     const newRest = !profile.is_resting;
     await updateProfile({ is_resting: newRest });
 
-    // Log the rest toggle event
-    await supabase.from('caravan_logs').insert({
-      caravan_id: profile.caravan_id,
-      author_id: profile.id,
-      entry_type: 'rest_toggle',
-      message: newRest
-        ? `has sat down to Rest at the Hearth (Grace Mode active). The party journeys on in peace.`
-        : `has stood up refreshed from the Hearth, ready to scout the path forward!`,
-    });
+    // Log the rest toggle event to caravan_logs if user belongs to a caravan
+    if (profile.caravan_id) {
+      await supabase.from('caravan_logs').insert({
+        caravan_id: profile.caravan_id,
+        author_id: profile.id,
+        entry_type: 'rest_toggle',
+        message: newRest
+          ? `has sat down to Rest at the Hearth (Grace Mode active). The party journeys on in peace.`
+          : `has stood up refreshed from the Hearth, ready to scout the path forward!`,
+      });
+    }
 
     return newRest;
   };
 
-  const switchSandboxUser = (userId: string) => {
-    if (!isSandbox) return;
-    sandboxStore.setCurrentUserId(userId);
-    setProfile(sandboxStore.getCurrentUser());
-  };
-
   const signInWithEmail = async (email: string, pass: string) => {
-    if (isSandbox || !supabase) {
-      return { error: new Error('Supabase is not configured. Currently in Sandbox mode.') };
-    }
-    const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password: pass,
+    });
     return { error: error as Error | null };
   };
 
@@ -144,52 +157,61 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     username: string,
     archetype: Archetype
   ) => {
-    if (isSandbox || !supabase) {
-      return { error: new Error('Supabase is not configured. Currently in Sandbox mode.') };
-    }
+    const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(username)}`;
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: email.trim(),
       password: pass,
       options: {
         data: {
-          username,
+          username: username.trim(),
           archetype,
+          avatar_url: avatarUrl,
         },
       },
     });
 
     if (!error && data.user) {
-      // Ensure profile row exists
       await supabase.from('profiles').upsert({
         id: data.user.id,
-        username,
+        username: username.trim(),
         archetype,
-        avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`,
+        avatar_url: avatarUrl,
       });
     }
 
     return { error: error as Error | null };
   };
 
+  const signInWithGitHub = async () => {
+    const redirectTo = window.location.origin + window.location.pathname;
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'github',
+      options: {
+        redirectTo,
+      },
+    });
+    return { error: error as Error | null };
+  };
+
   const signOut = async () => {
-    if (supabase) {
-      await supabase.auth.signOut();
-      setProfile(null);
-    }
+    await supabase.auth.signOut();
+    setUser(null);
+    setProfile(null);
   };
 
   return (
     <AuthContext.Provider
       value={{
+        user,
         profile,
         loading,
-        isSandbox,
         updateProfile,
         toggleRestMode,
-        switchSandboxUser,
         signInWithEmail,
         signUpWithEmail,
+        signInWithGitHub,
         signOut,
+        refreshProfile,
       }}
     >
       {children}

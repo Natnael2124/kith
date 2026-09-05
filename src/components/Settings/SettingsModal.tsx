@@ -3,23 +3,14 @@ import {
   X,
   Settings as SettingsIcon,
   Key,
-  Database,
   Volume2,
   User,
   Check,
   Sparkles,
   AlertCircle,
-  Copy,
-  RotateCcw,
 } from 'lucide-react';
 import { AIProvider, Archetype } from '../../types';
 import { getStoredAISettings, saveStoredAISettings } from '../../lib/ai';
-import {
-  getStoredSupabaseConfig,
-  saveStoredSupabaseConfig,
-  clearStoredSupabaseConfig,
-  sandboxStore,
-} from '../../lib/supabase';
 import { sound } from '../../lib/sound';
 import { useAuth } from '../../context/AuthContext';
 import { ARCHETYPES } from '../../lib/constants';
@@ -30,9 +21,9 @@ interface SettingsModalProps {
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
-  const { profile, isSandbox, updateProfile, switchSandboxUser } = useAuth();
+  const { profile, updateProfile } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'ai' | 'supabase' | 'sound' | 'profile'>('ai');
+  const [activeTab, setActiveTab] = useState<'ai' | 'sound' | 'profile'>('ai');
 
   // AI State
   const initialAI = getStoredAISettings();
@@ -41,12 +32,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [aiTestResult, setAiTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [isTestingAI, setIsTestingAI] = useState(false);
   const [aiSaved, setAiSaved] = useState(false);
-
-  // Supabase State
-  const initialSupabase = getStoredSupabaseConfig();
-  const [sbUrl, setSbUrl] = useState(initialSupabase.url);
-  const [sbAnonKey, setSbAnonKey] = useState(initialSupabase.anonKey);
-  const [copiedSchema, setCopiedSchema] = useState(false);
 
   // Sound State
   const [soundEnabled, setSoundEnabled] = useState(sound.isEnabled());
@@ -66,7 +51,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       apiKey: apiKey.trim(),
       model:
         provider === 'gemini'
-          ? 'gemini-1.5-flash'
+          ? 'gemini-2.5-flash'
           : provider === 'openai'
           ? 'gpt-4o-mini'
           : 'claude-3-5-sonnet-latest',
@@ -87,10 +72,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     try {
       if (provider === 'gemini') {
         const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey.trim()}`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey.trim(),
+            },
             body: JSON.stringify({
               contents: [{ parts: [{ text: 'Respond with the single word: "Kindled"' }] }],
             }),
@@ -100,7 +88,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           const err = await res.json().catch(() => ({}));
           throw new Error(err.error?.message || `HTTP ${res.status}`);
         }
-        setAiTestResult({ ok: true, message: 'Success! Connected to Gemini API.' });
+        setAiTestResult({ ok: true, message: 'Success! Connected to Gemini 2.5 Flash API.' });
       } else if (provider === 'openai') {
         const res = await fetch('https://api.openai.com/v1/models', {
           headers: { Authorization: `Bearer ${apiKey.trim()}` },
@@ -119,30 +107,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     } finally {
       setIsTestingAI(false);
     }
-  };
-
-  // Supabase Save
-  const handleSaveSupabase = () => {
-    if (!sbUrl || !sbAnonKey) {
-      alert('Please fill in both Supabase URL and Anon Key.');
-      return;
-    }
-    saveStoredSupabaseConfig(sbUrl, sbAnonKey);
-  };
-
-  const handleResetSandbox = () => {
-    if (confirm('Reset to local Sandbox Mode? This will clear stored Supabase credentials.')) {
-      clearStoredSupabaseConfig();
-    }
-  };
-
-  const handleCopySchema = () => {
-    // Read schema or instruct user to copy schema.sql
-    navigator.clipboard.writeText(
-      `-- Copy full schema from schema.sql in the repo and execute in Supabase SQL Editor!`
-    );
-    setCopiedSchema(true);
-    setTimeout(() => setCopiedSchema(false), 2000);
   };
 
   // Sound changes
@@ -166,7 +130,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-stone-900 border border-stone-800 w-full max-w-2xl rounded-2xl p-6 shadow-2xl relative max-h-[92vh] flex flex-col">
+      <div className="bg-stone-900 border border-stone-800 w-full max-w-xl rounded-2xl p-6 shadow-2xl relative max-h-[92vh] flex flex-col">
         {/* Close */}
         <button
           onClick={onClose}
@@ -181,9 +145,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             <SettingsIcon className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-stone-100">Caravan Settings & Configuration</h3>
+            <h3 className="text-lg font-bold text-stone-100">Caravan Settings</h3>
             <p className="text-xs text-stone-400">
-              Manage your BYOK AI keys, Supabase backend, soundscape, and companion profile.
+              Manage your BYOK AI keys, audio ambience, and companion profile.
             </p>
           </div>
         </div>
@@ -193,9 +157,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           {(
             [
               { id: 'ai', label: 'BYOK AI Keys', icon: Key },
-              { id: 'supabase', label: 'Supabase DB', icon: Database },
               { id: 'sound', label: 'Hearth Sound', icon: Volume2 },
-              { id: 'profile', label: 'Profile & Party', icon: User },
+              { id: 'profile', label: 'Profile & Archetype', icon: User },
             ] as const
           ).map(({ id, label, icon: Icon }) => (
             <button
@@ -229,8 +192,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   </span>
                 </div>
                 <p className="text-xs text-stone-400 leading-relaxed">
-                  Kith works completely standalone with deterministic gameplay rules and procedural
-                  lore. By providing your personal API key, you unlock the full <strong>AI Chronicler</strong> and <strong>Quest Alchemist</strong>.
+                  Kith works completely standalone with deterministic game rules. Optional personal keys
+                  unlock the <strong>AI Chronicler</strong> and <strong>Quest Alchemist</strong>.
                 </p>
               </div>
 
@@ -241,8 +204,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 <div className="grid grid-cols-3 gap-2">
                   {(
                     [
-                      { id: 'gemini', label: 'Google Gemini', sub: 'Free Tier Friendly' },
-                      { id: 'openai', label: 'OpenAI', sub: 'GPT-4o / mini' },
+                      { id: 'gemini', label: 'Google Gemini', sub: 'Gemini 2.5 Flash' },
+                      { id: 'openai', label: 'OpenAI', sub: 'GPT-4o-mini' },
                       { id: 'claude', label: 'Anthropic Claude', sub: 'Claude 3.5' },
                     ] as const
                   ).map(({ id, label, sub }) => (
@@ -326,102 +289,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </div>
           )}
 
-          {/* TAB 2: SUPABASE CONFIG */}
-          {activeTab === 'supabase' && (
-            <div className="space-y-4">
-              <div
-                className={`p-3.5 rounded-xl border flex items-center justify-between ${
-                  isSandbox
-                    ? 'bg-amber-950/20 border-amber-500/30 text-amber-300'
-                    : 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300'
-                }`}
-              >
-                <div className="flex items-center gap-2.5 text-xs">
-                  <Database className="w-4 h-4" />
-                  <span>
-                    Current Backend: <strong>{isSandbox ? 'Local Sandbox Mode (Zero Setup)' : 'Live Supabase Cloud'}</strong>
-                  </span>
-                </div>
-                {!isSandbox && (
-                  <button
-                    onClick={handleResetSandbox}
-                    className="text-[11px] underline text-stone-400 hover:text-stone-200"
-                  >
-                    Switch to Sandbox
-                  </button>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-stone-300 mb-1">
-                  Supabase Project URL:
-                </label>
-                <input
-                  type="text"
-                  value={sbUrl}
-                  onChange={(e) => setSbUrl(e.target.value)}
-                  placeholder="https://your-project.supabase.co"
-                  className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-stone-300 mb-1">
-                  Supabase Anon Key:
-                </label>
-                <input
-                  type="password"
-                  value={sbAnonKey}
-                  onChange={(e) => setSbAnonKey(e.target.value)}
-                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                  className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div className="bg-stone-950/60 border border-stone-800 rounded-xl p-3 text-xs text-stone-400 space-y-2">
-                <div className="font-semibold text-stone-300 flex items-center justify-between">
-                  <span>Database Setup Reminder:</span>
-                  <button
-                    type="button"
-                    onClick={handleCopySchema}
-                    className="text-[11px] text-amber-400 hover:underline flex items-center gap-1"
-                  >
-                    {copiedSchema ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                    <span>{copiedSchema ? 'SQL Path Copied!' : 'schema.sql in repo'}</span>
-                  </button>
-                </div>
-                <p>
-                  Before connecting, execute the included <code>schema.sql</code> in your Supabase SQL Editor to create the 4 tables, foreign keys, RLS policies, and triggers.
-                </p>
-              </div>
-
-              <div className="flex items-center justify-between pt-2">
-                {isSandbox && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      sandboxStore.resetDemoData();
-                      alert('Sandbox demo data has been reset to defaults.');
-                    }}
-                    className="flex items-center gap-1.5 text-xs text-stone-400 hover:text-stone-200"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Reset Demo Caravan Data</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={handleSaveSupabase}
-                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-bold shadow-md shadow-amber-500/20 transition flex items-center gap-1.5 ml-auto"
-                >
-                  <Database className="w-4 h-4" />
-                  <span>Connect Supabase Backend</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: SOUND & AMBIENCE */}
+          {/* TAB 2: SOUND & AMBIENCE */}
           {activeTab === 'sound' && (
             <div className="space-y-4">
               <div className="bg-stone-950/60 border border-stone-800 rounded-xl p-4 flex items-center justify-between">
@@ -466,7 +334,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </div>
           )}
 
-          {/* TAB 4: PROFILE & PARTY */}
+          {/* TAB 3: PROFILE & ARCHETYPE */}
           {activeTab === 'profile' && (
             <div className="space-y-4">
               <div>
@@ -520,40 +388,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   <span>{profileSaved ? 'Profile Updated!' : 'Save Profile Changes'}</span>
                 </button>
               </div>
-
-              {/* Sandbox Companion Switcher */}
-              {isSandbox && (
-                <div className="pt-4 border-t border-stone-800">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-stone-300">
-                      Sandbox Companion Switcher:
-                    </span>
-                    <span className="text-[10px] text-stone-500">Test different party roles</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {sandboxStore.getProfiles().map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => switchSandboxUser(p.id)}
-                        className={`p-2 rounded-xl border text-center transition ${
-                          p.id === profile?.id
-                            ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
-                            : 'bg-stone-950/50 border-stone-800 text-stone-400 hover:text-stone-200'
-                        }`}
-                      >
-                        <img
-                          src={p.avatar_url || ''}
-                          alt={p.username}
-                          className="w-8 h-8 rounded-full mx-auto mb-1 border border-stone-700"
-                        />
-                        <div className="text-xs font-semibold truncate">{p.username.split(' ')[0]}</div>
-                        <div className="text-[10px] text-stone-500">{p.archetype}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>

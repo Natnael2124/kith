@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CaravanProvider, useCaravan } from './context/CaravanContext';
 import { Navbar } from './components/UI/Navbar';
+import { LandingAuthView } from './components/Auth/LandingAuthView';
 import { CampfireCanvas } from './components/Campfire/CampfireCanvas';
 import { CampfireHUD } from './components/Campfire/CampfireHUD';
 import { PartyRoster } from './components/Party/PartyRoster';
@@ -21,7 +22,7 @@ import {
 } from 'lucide-react';
 
 const MainContent: React.FC = () => {
-  const { profile, toggleRestMode, isSandbox } = useAuth();
+  const { user, profile, loading, toggleRestMode } = useAuth();
   const { caravan, quests, logs } = useCaravan();
 
   const [activeTab, setActiveTab] = useState<'hearth' | 'quests' | 'logs'>('hearth');
@@ -29,6 +30,64 @@ const MainContent: React.FC = () => {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isAlchemistOpen, setIsAlchemistOpen] = useState(false);
   const [isCaravanModalOpen, setIsCaravanModalOpen] = useState(false);
+
+  // 1. Initial Loading Screen
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0c0a09] text-stone-100 flex flex-col items-center justify-center p-4">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-stone-950 shadow-2xl shadow-amber-500/30 mb-4 animate-pulse">
+          <Flame className="w-9 h-9 fill-stone-950" />
+        </div>
+        <h2 className="font-cinzel text-xl font-bold text-stone-200">Attuning with the Hearth...</h2>
+        <p className="text-xs text-stone-500 mt-1">Connecting to live Supabase backend</p>
+      </div>
+    );
+  }
+
+  // 2. Unauthenticated Visitor -> Welcoming Landing & Auth View
+  if (!user || !profile) {
+    return <LandingAuthView />;
+  }
+
+  // 3. Authenticated Scout without a Caravan -> Caravan Onboarding
+  if (!profile.caravan_id) {
+    return (
+      <div className="min-h-screen bg-[#0c0a09] text-stone-100 flex flex-col justify-between">
+        <Navbar
+          activeTab={activeTab}
+          onSelectTab={setActiveTab}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenAuth={() => setIsAuthOpen(true)}
+        />
+
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center max-w-lg mx-auto">
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-xl mb-4">
+            <Users className="w-8 h-8" />
+          </div>
+          <h2 className="font-cinzel text-2xl font-bold text-stone-100">Welcome, {profile.username}!</h2>
+          <p className="text-stone-400 text-sm mt-2 mb-6">
+            You are ready to journey, but you are not yet attached to a Caravan. You can found your own
+            fellowship or join companions with an invite code.
+          </p>
+          <button
+            onClick={() => setIsCaravanModalOpen(true)}
+            className="py-3 px-6 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-stone-950 font-bold text-sm shadow-lg shadow-amber-500/20 transition flex items-center gap-2"
+          >
+            <Users className="w-4 h-4" />
+            <span>Join or Found a Caravan</span>
+          </button>
+        </div>
+
+        <CaravanModal
+          isOpen={true}
+          onClose={() => setIsCaravanModalOpen(false)}
+          canClose={false}
+        />
+
+        <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      </div>
+    );
+  }
 
   const campfireLevel = caravan?.campfire_level ?? 75;
   const completedToday = quests.filter((q) => q.is_completed).length;
@@ -177,6 +236,11 @@ const MainContent: React.FC = () => {
                         </span>
                       </div>
                     ))}
+                    {quests.length === 0 && (
+                      <p className="text-xs text-stone-500 italic py-2 text-center">
+                        No quests active today. Chart a new quest to feed the hearth!
+                      </p>
+                    )}
                   </div>
 
                   <div className="mt-4 pt-3 border-t border-stone-800/60 flex items-center justify-between text-xs text-stone-400">
@@ -215,6 +279,11 @@ const MainContent: React.FC = () => {
                         {l.message}
                       </div>
                     ))}
+                    {logs.length === 0 && (
+                      <p className="text-xs text-stone-500 italic py-2 text-center">
+                        The expedition log is quiet. Complete a quest or kindle a companion to write the first entry!
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -255,7 +324,7 @@ const MainContent: React.FC = () => {
             </span>
             <span className="flex items-center gap-1.5 text-purple-400">
               <Sparkles className="w-4 h-4" />
-              BYOK AI Chronicler
+              Gemini 2.5 Flash AI
             </span>
           </div>
 
@@ -264,19 +333,19 @@ const MainContent: React.FC = () => {
             surveillance verification. When one member advances, the entire Caravan moves forward.
           </p>
 
-          <div className="flex flex-wrap items-center justify-center gap-4 text-[11px] text-stone-400 pt-2">
-            <span>Mode: {isSandbox ? 'Local Sandbox (Offline Ready)' : 'Supabase Live Cloud'}</span>
+          <div className="flex flex-wrap items-center justify-center gap-4 text-[11px] text-stone-500 pt-2">
+            <span>Powered by Supabase Live Cloud</span>
             <span>•</span>
             <button
               onClick={() => setIsSettingsOpen(true)}
               className="text-amber-400 hover:underline"
             >
-              Configure BYOK / Supabase
+              BYOK AI & Audio Settings
             </button>
             <span>•</span>
             <button
               onClick={() => setIsCaravanModalOpen(true)}
-              className="text-stone-300 hover:underline"
+              className="text-stone-400 hover:underline"
             >
               Found or Join Caravan
             </button>
@@ -288,7 +357,11 @@ const MainContent: React.FC = () => {
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
       <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
       <QuestAlchemistModal isOpen={isAlchemistOpen} onClose={() => setIsAlchemistOpen(false)} />
-      <CaravanModal isOpen={isCaravanModalOpen} onClose={() => setIsCaravanModalOpen(false)} />
+      <CaravanModal
+        isOpen={isCaravanModalOpen}
+        onClose={() => setIsCaravanModalOpen(false)}
+        canClose={Boolean(profile?.caravan_id)}
+      />
     </div>
   );
 };

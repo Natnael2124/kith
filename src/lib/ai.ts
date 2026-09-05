@@ -6,7 +6,12 @@ export function getStoredAISettings(): AISettings {
   const saved = localStorage.getItem(AI_STORAGE_KEY);
   if (saved) {
     try {
-      return JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      // Migrate deprecated gemini-1.5 models to gemini-2.5-flash
+      if (parsed.model && parsed.model.includes('1.5')) {
+        parsed.model = 'gemini-2.5-flash';
+      }
+      return parsed;
     } catch {
       // ignore
     }
@@ -14,7 +19,7 @@ export function getStoredAISettings(): AISettings {
   return {
     provider: 'gemini',
     apiKey: '',
-    model: 'gemini-1.5-flash',
+    model: 'gemini-2.5-flash',
   };
 }
 
@@ -115,7 +120,6 @@ export async function callAIChronicler(
   members: Profile[]
 ): Promise<string> {
   if (!settings.apiKey) {
-    // Return procedural generator if no key is configured
     return generateProceduralChronicle(caravanName, distance, campfireLevel, recentLogs, members);
   }
 
@@ -192,11 +196,14 @@ async function requestAI(settings: AISettings, prompt: string): Promise<string> 
   const { provider, apiKey } = settings;
 
   if (provider === 'gemini') {
-    const model = settings.model || 'gemini-1.5-flash';
+    const model = settings.model || 'gemini-2.5-flash';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {

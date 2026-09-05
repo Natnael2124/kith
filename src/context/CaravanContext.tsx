@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Caravan, CaravanLog, Profile, Quest } from '../types';
-import { sandboxStore, supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { sound } from '../lib/sound';
 import confetti from 'canvas-confetti';
@@ -19,14 +19,14 @@ interface CaravanContextType {
   kindleCompanion: (targetUserId: string, note?: string) => Promise<void>;
   addCustomLog: (entryType: CaravanLog['entry_type'], message: string) => Promise<void>;
   joinCaravanByCode: (code: string) => Promise<boolean>;
-  createCaravan: (name: string, motto: string) => Promise<void>;
+  createCaravan: (name: string, motto: string) => Promise<Caravan | null>;
   refreshData: () => Promise<void>;
 }
 
 const CaravanContext = createContext<CaravanContextType | undefined>(undefined);
 
 export const CaravanProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { profile, isSandbox } = useAuth();
+  const { profile, refreshProfile } = useAuth();
   const [caravan, setCaravan] = useState<Caravan | null>(null);
   const [partyMembers, setPartyMembers] = useState<Profile[]>([]);
   const [quests, setQuests] = useState<Quest[]>([]);
@@ -34,24 +34,33 @@ export const CaravanProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [logs, setLogs] = useState<CaravanLog[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Sync state from sandbox store
-  const syncSandboxState = useCallback(() => {
-    setCaravan(sandboxStore.getCaravan());
-    setPartyMembers(sandboxStore.getProfiles());
-    setQuests(sandboxStore.getQuests());
-    setAllPartyQuests(sandboxStore.getAllQuests());
-    setLogs(sandboxStore.getLogs());
-    setLoading(false);
-  }, []);
-
-  // Fetch from Supabase
+  // Fetch full data from Supabase
   const fetchSupabaseData = useCallback(async () => {
-    if (!supabase || !profile) return;
+    if (!profile) {
+      setCaravan(null);
+      setPartyMembers([]);
+      setQuests([]);
+      setAllPartyQuests([]);
+      setLogs([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
 
-      // 1. Caravan
+      // 1. Quests for current user
+      const { data: questsData } = await supabase
+        .from('quests')
+        .select('*')
+        .eq('user_id', profile.id)
+        .order('is_completed', { ascending: true })
+        .order('completed_at', { ascending: false });
+      if (questsData) setQuests(questsData as Quest[]);
+
+      // 2. Caravan & Party data if user has caravan_id
       if (profile.caravan_id) {
+        // Fetch Caravan
         const { data: caravanData } = await supabase
           .from('caravans')
           .select('*')
@@ -59,24 +68,25 @@ export const CaravanProvider: React.FC<{ children: React.ReactNode }> = ({ child
           .single();
         if (caravanData) setCaravan(caravanData as Caravan);
 
-        // 2. Party Members
+        // Fetch Party Members
         const { data: membersData } = await supabase
           .from('profiles')
           .select('*')
           .eq('caravan_id', profile.caravan_id);
-        if (membersData) setPartyMembers(membersData as Profile[]);
+        const members = (membersData as Profile[]) || [];
+        setPartyMembers(members);
 
-        // 3. Caravan Logs
+        // Fetch Caravan Logs
         const { data: logsData } = await supabase
           .from('caravan_logs')
           .select('*')
           .eq('caravan_id', profile.caravan_id)
           .order('created_at', { ascending: false })
-          .limit(50);
+          .limit(60);
+
         if (logsData) {
-          // Enrich logs with author info if present
           const enriched = (logsData as CaravanLog[]).map((log) => {
-            const author = membersData?.find((m) => m.id === log.author_id);
+            const author = members.find((m) => m.id === log.author_id);
             return {
               ...log,
               author_name: author?.username || log.author_name || 'Companion',
@@ -86,47 +96,34 @@ export const CaravanProvider: React.FC<{ children: React.ReactNode }> = ({ child
           });
           setLogs(enriched);
         }
-      }
 
-      // 4. Quests for current user
-      const { data: questsData } = await supabase
-        .from('quests')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('is_completed', { ascending: true });
-      if (questsData) setQuests(questsData as Quest[]);
-
-      // 5. All party quests (for collective party progress)
-      if (profile.caravan_id) {
-        const { data: partyQuestsData } = await supabase
-          .from('quests')
-          .select('*')
-          .in(
-            'user_id',
-            partyMembers.map((m) => m.id)
-          );
-        if (partyQuestsData) setAllPartyQuests(partyQuestsData as Quest[]);
+        // Fetch all party quests
+        if (members.length > 0) {
+          const { data: partyQuestsData } = await supabase
+            .from('quests')
+            .select('*')
+            .in('user_id', members.map((m) => m.id));
+          if (partyQuestsData) setAllPartyQuests(partyQuestsData as Quest[]);
+        }
+      } else {
+        setCaravan(null);
+        setPartyMembers([]);
+        setLogs([]);
+        setAllPartyQuests([]);
       }
     } catch (err) {
       console.error('Error fetching Supabase caravan data:', err);
     } finally {
       setLoading(false);
     }
-  }, [profile, partyMembers]);
+  }, [profile]);
 
   useEffect(() => {
-    if (isSandbox) {
-      syncSandboxState();
-      const unsub = sandboxStore.subscribe(syncSandboxState);
-      return unsub;
-    }
-
     fetchSupabaseData();
 
     // Setup Supabase Realtime subscriptions
-    const client = supabase;
-    if (client && profile?.caravan_id) {
-      const channel = client
+    if (profile?.caravan_id) {
+      const channel = supabase
         .channel(`caravan-${profile.caravan_id}`)
         .on(
           'postgres_changes',
@@ -149,17 +146,23 @@ export const CaravanProvider: React.FC<{ children: React.ReactNode }> = ({ child
             fetchSupabaseData();
           }
         )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'quests' },
+          () => {
+            fetchSupabaseData();
+          }
+        )
         .subscribe();
 
       return () => {
-        client.removeChannel(channel);
+        supabase.removeChannel(channel);
       };
     }
-  }, [isSandbox, syncSandboxState, fetchSupabaseData, profile?.caravan_id]);
+  }, [profile?.caravan_id, fetchSupabaseData]);
 
   // Complete quest
   const completeQuest = async (questId: string) => {
-    // Fire festive visual & sound effects
     sound.playQuestComplete();
     try {
       confetti({
@@ -169,15 +172,10 @@ export const CaravanProvider: React.FC<{ children: React.ReactNode }> = ({ child
         colors: ['#fbbf24', '#f59e0b', '#f97316', '#ef4444', '#10b981'],
       });
     } catch {
-      // Confetti fallback
+      // ignore
     }
 
-    if (isSandbox) {
-      sandboxStore.completeQuest(questId);
-      return;
-    }
-
-    if (!supabase || !profile) return;
+    if (!profile) return;
     const quest = quests.find((q) => q.id === questId);
     if (!quest) return;
 
@@ -221,12 +219,7 @@ export const CaravanProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Uncomplete quest
   const uncompleteQuest = async (questId: string) => {
-    if (isSandbox) {
-      sandboxStore.uncompleteQuest(questId);
-      return;
-    }
-
-    if (!supabase || !profile) return;
+    if (!profile) return;
     await supabase
       .from('quests')
       .update({ is_completed: false, completed_at: null })
@@ -237,13 +230,11 @@ export const CaravanProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Create quest
   const createQuest = async (
-    data: Omit<Quest, 'id' | 'user_id' | 'is_completed' | 'completed_at' | 'target_date'> & { target_date?: string }
-  ): Promise<Quest | null> => {
-    if (isSandbox) {
-      return sandboxStore.createQuest(data);
+    data: Omit<Quest, 'id' | 'user_id' | 'is_completed' | 'completed_at' | 'target_date'> & {
+      target_date?: string;
     }
-
-    if (!supabase || !profile) return null;
+  ): Promise<Quest | null> => {
+    if (!profile) return null;
     const { data: created, error } = await supabase
       .from('quests')
       .insert({
@@ -265,12 +256,6 @@ export const CaravanProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Delete quest
   const deleteQuest = async (questId: string) => {
-    if (isSandbox) {
-      sandboxStore.deleteQuest(questId);
-      return;
-    }
-
-    if (!supabase) return;
     await supabase.from('quests').delete().eq('id', questId);
     await fetchSupabaseData();
   };
@@ -278,13 +263,8 @@ export const CaravanProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Kindle a companion
   const kindleCompanion = async (targetUserId: string, note?: string) => {
     sound.playKindleBuff();
+    if (!profile || !caravan) return;
 
-    if (isSandbox) {
-      sandboxStore.kindleCompanion(targetUserId, note);
-      return;
-    }
-
-    if (!supabase || !profile || !caravan) return;
     const target = partyMembers.find((m) => m.id === targetUserId);
     if (!target) return;
 
@@ -310,15 +290,10 @@ export const CaravanProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Add custom log (e.g. Chronicle story)
   const addCustomLog = async (entryType: CaravanLog['entry_type'], message: string) => {
-    if (isSandbox) {
-      sandboxStore.addLog({ entry_type: entryType, message, author_id: null });
-      return;
-    }
-
-    if (!supabase || !caravan) return;
+    if (!caravan) return;
     await supabase.from('caravan_logs').insert({
       caravan_id: caravan.id,
-      author_id: null,
+      author_id: profile?.id || null,
       entry_type: entryType,
       message,
     });
@@ -327,58 +302,48 @@ export const CaravanProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Join Caravan by code
   const joinCaravanByCode = async (code: string): Promise<boolean> => {
-    if (isSandbox) {
-      sandboxStore.joinCaravan(code, `Caravan ${code}`);
-      return true;
-    }
+    if (!profile) return false;
+    const cleanCode = code.trim().toUpperCase();
 
-    if (!supabase || !profile) return false;
-    const { data: foundCaravan } = await supabase
+    const { data: foundCaravan, error: findErr } = await supabase
       .from('caravans')
       .select('*')
-      .eq('invite_code', code.trim().toUpperCase())
+      .eq('invite_code', cleanCode)
       .single();
 
-    if (!foundCaravan) return false;
+    if (findErr || !foundCaravan) return false;
 
     // Link user to caravan
-    await supabase
+    const { error: updateErr } = await supabase
       .from('profiles')
       .update({ caravan_id: foundCaravan.id })
       .eq('id', profile.id);
 
+    if (updateErr) throw updateErr;
+
+    // Log welcome message
     await supabase.from('caravan_logs').insert({
       caravan_id: foundCaravan.id,
       author_id: profile.id,
       entry_type: 'kindle_buff',
-      message: `${profile.username} has joined the Caravan! A new bedroll is laid by the fire.`,
+      message: `${profile.username} joined the Caravan! A new bedroll is laid by the fire.`,
     });
 
+    await refreshProfile();
     await fetchSupabaseData();
     return true;
   };
 
   // Create Caravan
-  const createCaravan = async (name: string, motto: string) => {
+  const createCaravan = async (name: string, motto: string): Promise<Caravan | null> => {
+    if (!profile) return null;
     const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-    if (isSandbox) {
-      sandboxStore.updateCaravan({
-        name,
-        motto,
-        invite_code: inviteCode,
-        campfire_level: 100,
-        expedition_distance: 0,
-      });
-      return;
-    }
-
-    if (!supabase || !profile) return;
     const { data: newCaravan, error } = await supabase
       .from('caravans')
       .insert({
-        name,
-        motto,
+        name: name.trim(),
+        motto: motto.trim() || null,
         invite_code: inviteCode,
         campfire_level: 100,
         expedition_distance: 0,
@@ -394,7 +359,16 @@ export const CaravanProvider: React.FC<{ children: React.ReactNode }> = ({ child
       .update({ caravan_id: newCaravan.id })
       .eq('id', profile.id);
 
+    await supabase.from('caravan_logs').insert({
+      caravan_id: newCaravan.id,
+      author_id: profile.id,
+      entry_type: 'kindle_buff',
+      message: `${profile.username} founded "${name}"! The sacred hearth is ignited with pure flame.`,
+    });
+
+    await refreshProfile();
     await fetchSupabaseData();
+    return newCaravan as Caravan;
   };
 
   return (
