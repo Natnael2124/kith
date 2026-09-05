@@ -19,7 +19,7 @@ interface CaravanContextType {
   kindleCompanion: (targetUserId: string, note?: string) => Promise<void>;
   addCustomLog: (entryType: CaravanLog['entry_type'], message: string) => Promise<void>;
   joinCaravanByCode: (code: string) => Promise<boolean>;
-  createCaravan: (name: string, motto: string) => Promise<Caravan | null>;
+  createCaravan: (name?: string, motto?: string) => Promise<Caravan | null>;
   refreshData: () => Promise<void>;
 }
 
@@ -160,6 +160,48 @@ export const CaravanProvider: React.FC<{ children: React.ReactNode }> = ({ child
       };
     }
   }, [profile?.caravan_id, fetchSupabaseData]);
+
+  // Seed default starter habits for instant gameplay satisfaction
+  const seedStarterQuestsIfEmpty = async (userId: string) => {
+    const { data: existingQuests } = await supabase
+      .from('quests')
+      .select('id')
+      .eq('user_id', userId)
+      .limit(1);
+
+    if (!existingQuests || existingQuests.length === 0) {
+      const today = new Date().toISOString().split('T')[0];
+      await supabase.from('quests').insert([
+        {
+          user_id: userId,
+          title: 'Hydrate & nourish with fresh water',
+          category: 'Vitality',
+          xp_value: 20,
+          campfire_value: 15,
+          is_completed: false,
+          target_date: today,
+        },
+        {
+          user_id: userId,
+          title: '30 minutes focused work or deep study',
+          category: 'Intellect',
+          xp_value: 30,
+          campfire_value: 20,
+          is_completed: false,
+          target_date: today,
+        },
+        {
+          user_id: userId,
+          title: '20 minutes movement & fresh air',
+          category: 'Vitality',
+          xp_value: 25,
+          campfire_value: 15,
+          is_completed: false,
+          target_date: today,
+        },
+      ]);
+    }
+  };
 
   // Complete quest
   const completeQuest = async (questId: string) => {
@@ -321,6 +363,9 @@ export const CaravanProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     if (updateErr) throw updateErr;
 
+    // Seed starter habits if user has none
+    await seedStarterQuestsIfEmpty(profile.id);
+
     // Log welcome message
     await supabase.from('caravan_logs').insert({
       caravan_id: foundCaravan.id,
@@ -335,15 +380,17 @@ export const CaravanProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   // Create Caravan
-  const createCaravan = async (name: string, motto: string): Promise<Caravan | null> => {
+  const createCaravan = async (name?: string, motto?: string): Promise<Caravan | null> => {
     if (!profile) return null;
+    const caravanName = name?.trim() || `${profile.username}'s Caravan`;
+    const caravanMotto = motto?.trim() || 'Together through deep snows, our embers never die.';
     const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
     const { data: newCaravan, error } = await supabase
       .from('caravans')
       .insert({
-        name: name.trim(),
-        motto: motto.trim() || null,
+        name: caravanName,
+        motto: caravanMotto,
         invite_code: inviteCode,
         campfire_level: 100,
         expedition_distance: 0,
@@ -359,11 +406,14 @@ export const CaravanProvider: React.FC<{ children: React.ReactNode }> = ({ child
       .update({ caravan_id: newCaravan.id })
       .eq('id', profile.id);
 
+    // Seed starter habits if user has none
+    await seedStarterQuestsIfEmpty(profile.id);
+
     await supabase.from('caravan_logs').insert({
       caravan_id: newCaravan.id,
       author_id: profile.id,
       entry_type: 'kindle_buff',
-      message: `${profile.username} founded "${name}"! The sacred hearth is ignited with pure flame.`,
+      message: `${profile.username} founded "${caravanName}"! The sacred hearth is ignited with pure flame.`,
     });
 
     await refreshProfile();

@@ -2,20 +2,20 @@ import React, { useState } from 'react';
 import {
   Flame,
   Moon,
-  Sparkles,
   Users,
   Mail,
   Lock,
   User,
   Check,
   ArrowRight,
+  Sparkles,
 } from 'lucide-react';
 import { Archetype } from '../../types';
 import { ARCHETYPES } from '../../lib/constants';
 import { useAuth } from '../../context/AuthContext';
 
 export const LandingAuthView: React.FC = () => {
-  const { signInWithEmail, signUpWithEmail, signInWithGitHub } = useAuth();
+  const { signInWithEmail, signUpWithEmail } = useAuth();
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
@@ -25,7 +25,6 @@ export const LandingAuthView: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isGitHubLoading, setIsGitHubLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,37 +37,25 @@ export const LandingAuthView: React.FC = () => {
         const { error } = await signInWithEmail(email, password);
         if (error) throw error;
       } else {
-        if (!username.trim()) throw new Error('Please choose a scout username.');
+        if (!username.trim()) throw new Error('Please choose a username.');
         if (password.length < 6) throw new Error('Password must be at least 6 characters.');
 
         const { error } = await signUpWithEmail(email, password, username.trim(), archetype);
         if (error) throw error;
-        setSuccessMsg('Account created! Logging in to your hearth...');
+        setSuccessMsg('Account created! Entering the hearth...');
       }
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Authentication failed');
+      setErrorMsg(err instanceof Error ? err.message : 'Authentication failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleGitHubLogin = async () => {
-    setErrorMsg('');
-    setIsGitHubLoading(true);
-    try {
-      const { error } = await signInWithGitHub();
-      if (error) throw error;
-    } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'GitHub authentication failed');
-      setIsGitHubLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-[#0c0a09] text-stone-100 flex flex-col font-sans selection:bg-amber-500 selection:text-stone-950">
-      {/* Top Banner */}
+      {/* Minimal Header */}
       <header className="border-b border-stone-800/80 bg-stone-950/60 backdrop-blur-md px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-stone-950 shadow-lg shadow-amber-500/20">
               <Flame className="w-6 h-6 fill-stone-950" />
@@ -78,108 +65,71 @@ export const LandingAuthView: React.FC = () => {
                 KITH
               </span>
               <span className="ml-2 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                Co-op PvE
+                Co-op Life Gamification
               </span>
             </div>
           </div>
-
-          <div className="text-xs text-stone-400 hidden sm:flex items-center gap-2">
-            <span>Cooperation, Not Comparison</span>
-          </div>
+          <span className="text-xs text-stone-400 hidden sm:inline">Cooperation, Not Comparison</span>
         </div>
       </header>
 
-      {/* Main Hero & Auth Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-12 flex flex-col lg:flex-row items-center justify-between gap-12">
-        {/* Left Column: Vision & Philosophy */}
-        <div className="flex-1 max-w-2xl space-y-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold">
+      {/* Main Container */}
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-10 sm:py-16 flex flex-col lg:flex-row items-center justify-center gap-10 lg:gap-16">
+        {/* Left: Value Proposition */}
+        <div className="flex-1 max-w-xl space-y-6 text-center lg:text-left">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Cooperative Life-Gamification Expedition</span>
+            <span>PvE Fellowship • Zero PvP</span>
           </div>
 
-          <h1 className="text-3xl sm:text-5xl font-extrabold font-cinzel tracking-tight text-stone-100 leading-tight">
-            When one member advances,{' '}
+          <h1 className="text-3xl sm:text-5xl font-extrabold font-cinzel text-stone-100 leading-tight">
+            Turn your everyday life goals into a{' '}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-amber-200">
-              the entire Caravan moves forward.
+              shared journey.
             </span>
           </h1>
 
-          <p className="text-stone-300 text-sm sm:text-base leading-relaxed">
-            Zero toxic leaderboards, zero PvP, and zero surveillance. Kith unites parties of companions
-            around a shared <strong>Campfire</strong> that stays ablaze through your real-world daily rituals.
+          <p className="text-stone-300 text-sm sm:text-base leading-relaxed max-w-lg mx-auto lg:mx-0">
+            No comparison, no leaderboards. Complete your daily habits to keep the shared campfire
+            burning and advance your caravan together.
           </p>
 
-          {/* Pillars & Features Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-4">
-            <div className="p-4 rounded-2xl bg-stone-900/60 border border-stone-800/80">
-              <div className="flex items-center gap-2 text-amber-400 text-xs font-bold mb-1">
-                <Flame className="w-4 h-4" />
-                <span>The Campfire Engine</span>
-              </div>
-              <p className="text-xs text-stone-400 leading-relaxed">
-                Your habits feed seasoned firewood to the hearth (+15%). When one companion struggles,
-                the fellowship shares the load.
+          <div className="space-y-3 pt-2 text-left max-w-md mx-auto lg:mx-0">
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-stone-900/60 border border-stone-800/80">
+              <Flame className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-stone-300 leading-relaxed">
+                <strong>The Campfire Engine:</strong> Completed habits feed seasoned firewood (+15%) and propel the party forward along expedition milestones.
               </p>
             </div>
 
-            <div className="p-4 rounded-2xl bg-stone-900/60 border border-stone-800/80">
-              <div className="flex items-center gap-2 text-indigo-400 text-xs font-bold mb-1">
-                <Moon className="w-4 h-4" />
-                <span>Grace Mode ("Rest at Hearth")</span>
-              </div>
-              <p className="text-xs text-stone-400 leading-relaxed">
-                Sick, traveling, or burnt out? Toggle Rest status. Your inactivity will never penalize
-                your Caravan's expedition distance.
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-stone-900/60 border border-stone-800/80">
+              <Moon className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-stone-300 leading-relaxed">
+                <strong>Grace Mode:</strong> Rest at the hearth when ill or busy. Your inactivity never penalizes the caravan.
               </p>
             </div>
 
-            <div className="p-4 rounded-2xl bg-stone-900/60 border border-stone-800/80">
-              <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold mb-1">
-                <Users className="w-4 h-4" />
-                <span>Companion Kindling</span>
-              </div>
-              <p className="text-xs text-stone-400 leading-relaxed">
-                Send kindling sparks and heartwarming notes to lift up companions, reigniting campfire
-                heat (+10%) in real time.
-              </p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-stone-900/60 border border-stone-800/80">
-              <div className="flex items-center gap-2 text-purple-400 text-xs font-bold mb-1">
-                <Sparkles className="w-4 h-4" />
-                <span>BYOK AI Suite</span>
-              </div>
-              <p className="text-xs text-stone-400 leading-relaxed">
-                Unlock the AI Chronicler for weekly expedition lore and the Quest Alchemist to transmute
-                big dreams into daily habits.
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-stone-900/60 border border-stone-800/80">
+              <Users className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-stone-300 leading-relaxed">
+                <strong>Kindle Companions:</strong> Uplift struggling companions with warm sparks of encouragement to fuel the flame (+10%).
               </p>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Authentication Card */}
-        <div className="w-full max-w-md bg-stone-900/90 border border-stone-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md relative">
-          <div className="text-center mb-6">
-            <h2 className="text-xl font-bold text-stone-100 font-cinzel">
-              {mode === 'signin' ? 'Return to the Hearth' : 'Inscribe Your Name'}
-            </h2>
-            <p className="text-xs text-stone-400 mt-1">
-              {mode === 'signin'
-                ? 'Sign in to sync with your companions and shared campfire.'
-                : 'Choose your archetype and join a fellowship.'}
-            </p>
-          </div>
-
-          {/* Mode Tabs */}
-          <div className="flex border-b border-stone-800 mb-5">
+        {/* Right: Focused Authentication Card */}
+        <div className="w-full max-w-md bg-stone-900/95 border border-stone-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md">
+          {/* Mode Switcher */}
+          <div className="flex border-b border-stone-800 mb-6">
             <button
               type="button"
               onClick={() => {
                 setMode('signin');
                 setErrorMsg('');
+                setSuccessMsg('');
               }}
-              className={`flex-1 py-2 text-xs font-bold border-b-2 transition ${
+              className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition ${
                 mode === 'signin'
                   ? 'border-amber-400 text-amber-400'
                   : 'border-transparent text-stone-400 hover:text-stone-200'
@@ -192,8 +142,9 @@ export const LandingAuthView: React.FC = () => {
               onClick={() => {
                 setMode('signup');
                 setErrorMsg('');
+                setSuccessMsg('');
               }}
-              className={`flex-1 py-2 text-xs font-bold border-b-2 transition ${
+              className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition ${
                 mode === 'signup'
                   ? 'border-amber-400 text-amber-400'
                   : 'border-transparent text-stone-400 hover:text-stone-200'
@@ -201,27 +152,6 @@ export const LandingAuthView: React.FC = () => {
             >
               Create Account
             </button>
-          </div>
-
-          {/* GitHub 1-Click OAuth Button */}
-          <button
-            type="button"
-            onClick={handleGitHubLogin}
-            disabled={isGitHubLoading}
-            className="w-full py-2.5 px-4 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-700 hover:border-stone-600 text-stone-200 text-xs font-semibold transition flex items-center justify-center gap-2 mb-4 shadow-sm disabled:opacity-50"
-          >
-            <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
-            </svg>
-            <span>{isGitHubLoading ? 'Connecting to GitHub...' : 'Continue with GitHub'}</span>
-          </button>
-
-          <div className="relative flex py-2 items-center mb-4">
-            <div className="flex-grow border-t border-stone-800"></div>
-            <span className="flex-shrink mx-3 text-[11px] text-stone-500 uppercase tracking-wider">
-              Or with email
-            </span>
-            <div className="flex-grow border-t border-stone-800"></div>
           </div>
 
           {errorMsg && (
@@ -236,11 +166,11 @@ export const LandingAuthView: React.FC = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-3.5">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'signup' && (
               <div>
                 <label className="block text-xs font-semibold text-stone-300 mb-1">
-                  Scout Username:
+                  Username:
                 </label>
                 <div className="relative">
                   <User className="w-4 h-4 text-stone-500 absolute left-3 top-3" />
@@ -249,8 +179,8 @@ export const LandingAuthView: React.FC = () => {
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="e.g., Lyra Hearthwatcher"
-                    className="w-full bg-stone-950 border border-stone-700 rounded-xl pl-9 pr-3.5 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
+                    placeholder="e.g., Lyra Swift"
+                    className="w-full bg-stone-950 border border-stone-700 rounded-xl pl-9 pr-3.5 py-2.5 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
@@ -258,7 +188,7 @@ export const LandingAuthView: React.FC = () => {
 
             <div>
               <label className="block text-xs font-semibold text-stone-300 mb-1">
-                Email Address:
+                Email:
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-stone-500 absolute left-3 top-3" />
@@ -267,8 +197,8 @@ export const LandingAuthView: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="scout@caravan.io"
-                  className="w-full bg-stone-950 border border-stone-700 rounded-xl pl-9 pr-3.5 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
+                  placeholder="scout@kith.io"
+                  className="w-full bg-stone-950 border border-stone-700 rounded-xl pl-9 pr-3.5 py-2.5 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
                 />
               </div>
             </div>
@@ -284,17 +214,16 @@ export const LandingAuthView: React.FC = () => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-stone-950 border border-stone-700 rounded-xl pl-9 pr-3.5 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
+                  placeholder="At least 6 characters"
+                  className="w-full bg-stone-950 border border-stone-700 rounded-xl pl-9 pr-3.5 py-2.5 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
                 />
               </div>
             </div>
 
-            {/* Archetype Selector on Signup */}
             {mode === 'signup' && (
               <div>
                 <label className="block text-xs font-semibold text-stone-300 mb-1.5">
-                  Choose Your Archetype:
+                  Choose Archetype:
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   {(['Wayfarer', 'Warden', 'Sage', 'Artisan'] as const).map((arch) => {
@@ -306,8 +235,8 @@ export const LandingAuthView: React.FC = () => {
                         onClick={() => setArchetype(arch)}
                         className={`p-2 rounded-xl border text-left transition ${
                           archetype === arch
-                            ? 'bg-stone-800 border-amber-500/50'
-                            : 'bg-stone-950/40 border-stone-800 opacity-60'
+                            ? 'bg-stone-800 border-amber-500/50 shadow-sm'
+                            : 'bg-stone-950/40 border-stone-800 opacity-60 hover:opacity-100'
                         }`}
                       >
                         <div className="flex items-center justify-between">
@@ -325,9 +254,9 @@ export const LandingAuthView: React.FC = () => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-stone-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-1.5 disabled:opacity-50 mt-4"
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-stone-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-1.5 disabled:opacity-50 mt-2"
             >
-              <span>{isLoading ? 'Connecting...' : mode === 'signin' ? 'Sign In to Hearth' : 'Begin Journey'}</span>
+              <span>{isLoading ? 'Connecting...' : mode === 'signin' ? 'Sign In' : 'Create Account'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
@@ -335,8 +264,8 @@ export const LandingAuthView: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-stone-800/80 bg-stone-950 py-6 text-center text-xs text-stone-500">
-        Kith • Cooperative Life Gamification • Backed by Supabase & Gemini 2.5 Flash
+      <footer className="border-t border-stone-800/80 bg-stone-950 py-5 text-center text-xs text-stone-500">
+        Kith: Cooperative Life-Gamification • Backed by Supabase
       </footer>
     </div>
   );

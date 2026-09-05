@@ -11,7 +11,6 @@ interface AuthContextType {
   toggleRestMode: () => Promise<boolean>;
   signInWithEmail: (email: string, pass: string) => Promise<{ error: Error | null }>;
   signUpWithEmail: (email: string, pass: string, username: string, archetype: Archetype) => Promise<{ error: Error | null }>;
-  signInWithGitHub: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -41,10 +40,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      // Profile does not exist yet (e.g. GitHub OAuth or trigger delay)
+      // Profile does not exist yet (create default)
       const username =
+        authUser.user_metadata?.display_name ||
         authUser.user_metadata?.username ||
-        authUser.user_metadata?.user_name ||
         authUser.user_metadata?.name ||
         authUser.email?.split('@')[0] ||
         `Scout_${authUser.id.slice(0, 5)}`;
@@ -52,7 +51,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const archetype: Archetype = (authUser.user_metadata?.archetype as Archetype) || 'Wayfarer';
       const avatarUrl =
         authUser.user_metadata?.avatar_url ||
-        `https://api.dicebear.com/7.x/bottts/svg?seed=${authUser.id}`;
+        `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(username)}`;
 
       const { data: newProfile, error: upsertErr } = await supabase
         .from('profiles')
@@ -144,11 +143,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signInWithEmail = async (email: string, pass: string) => {
+    const cleanEmail = email.trim();
     const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
+      email: cleanEmail,
       password: pass,
     });
-    return { error: error as Error | null };
+
+    if (error) {
+      // Map to friendly human readable messages
+      let friendlyMessage = error.message;
+      if (error.message.toLowerCase().includes('invalid login credentials')) {
+        friendlyMessage = 'Incorrect email or password. Please verify and try again.';
+      } else if (error.message.toLowerCase().includes('email not confirmed')) {
+        friendlyMessage = 'Please confirm your email address before signing in.';
+      }
+      return { error: new Error(friendlyMessage) };
+    }
+
+    return { error: null };
   };
 
   const signUpWithEmail = async (
@@ -157,40 +169,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     username: string,
     archetype: Archetype
   ) => {
-    const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(username)}`;
+    const cleanEmail = email.trim();
+    const cleanName = username.trim() || cleanEmail.split('@')[0];
+    const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(cleanName)}`;
+
     const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
+      email: cleanEmail,
       password: pass,
       options: {
         data: {
-          username: username.trim(),
+          display_name: cleanName,
+          username: cleanName,
           archetype,
           avatar_url: avatarUrl,
         },
       },
     });
 
-    if (!error && data.user) {
+    if (error) {
+      return { error: new Error(error.message) };
+    }
+
+    if (data.user) {
+      // Ensure profile row exists immediately
       await supabase.from('profiles').upsert({
         id: data.user.id,
-        username: username.trim(),
+        username: cleanName,
         archetype,
         avatar_url: avatarUrl,
       });
+
+      // If session wasn't auto-established, attempt instant sign in
+      if (!data.session) {
+        await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: pass,
+        });
+      }
     }
 
-    return { error: error as Error | null };
-  };
-
-  const signInWithGitHub = async () => {
-    const redirectTo = window.location.origin + window.location.pathname;
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'github',
-      options: {
-        redirectTo,
-      },
-    });
-    return { error: error as Error | null };
+    return { error: null };
   };
 
   const signOut = async () => {
@@ -209,7 +227,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         toggleRestMode,
         signInWithEmail,
         signUpWithEmail,
-        signInWithGitHub,
         signOut,
         refreshProfile,
       }}

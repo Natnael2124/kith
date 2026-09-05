@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, Users, Plus, Key, ArrowRight } from 'lucide-react';
+import { X, Users, Plus, Key, ArrowRight, Sparkles, Compass } from 'lucide-react';
 import { useCaravan } from '../../context/CaravanContext';
+import { useAuth } from '../../context/AuthContext';
 
 interface CaravanModalProps {
   isOpen: boolean;
@@ -14,14 +15,28 @@ export const CaravanModal: React.FC<CaravanModalProps> = ({
   canClose = true,
 }) => {
   const { createCaravan, joinCaravanByCode } = useCaravan();
+  const { profile } = useAuth();
   const [tab, setTab] = useState<'create' | 'join'>('create');
-  const [name, setName] = useState('');
-  const [motto, setMotto] = useState('');
+  const [name, setName] = useState(profile ? `${profile.username}'s Fellowship` : '');
+  const [motto, setMotto] = useState('Together through deep snows, our embers never die.');
   const [inviteCode, setInviteCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   if (!isOpen) return null;
+
+  const handleQuickSolo = async () => {
+    setIsSubmitting(true);
+    setErrorMsg('');
+    try {
+      await createCaravan();
+      onClose();
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to create caravan');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +63,7 @@ export const CaravanModal: React.FC<CaravanModalProps> = ({
       if (ok) {
         onClose();
       } else {
-        setErrorMsg('Caravan with that invite code could not be found.');
+        setErrorMsg('No Caravan found with that invite code. Check with your companions and try again.');
       }
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to join caravan');
@@ -75,15 +90,37 @@ export const CaravanModal: React.FC<CaravanModalProps> = ({
           </div>
           <div>
             <h3 className="text-lg font-bold text-stone-100">
-              {!canClose ? 'Join or Found a Caravan' : 'Caravan Fellowship'}
+              {!canClose ? 'Enter the Campfire' : 'Caravan Fellowship'}
             </h3>
             <p className="text-xs text-stone-400">
               {!canClose
-                ? 'Before tending the campfire, join an expedition or found your own.'
+                ? 'Join an expedition with companions or start your own Caravan.'
                 : 'Found a new fellowship or join an existing caravan with an invite code.'}
             </p>
           </div>
         </div>
+
+        {/* 1-Click Fast Track for new users without a caravan */}
+        {!canClose && (
+          <div className="mb-5 p-4 rounded-xl bg-gradient-to-br from-amber-500/10 via-orange-500/10 to-stone-950 border border-amber-500/30">
+            <div className="flex items-center gap-2 text-xs font-bold text-amber-400 mb-1">
+              <Sparkles className="w-4 h-4" />
+              <span>Fast Track: Solo Caravan</span>
+            </div>
+            <p className="text-[11px] text-stone-300 leading-relaxed mb-3">
+              Start your journey immediately with 3 pre-seeded daily habits. You can invite companions to your campfire at any time.
+            </p>
+            <button
+              type="button"
+              onClick={handleQuickSolo}
+              disabled={isSubmitting}
+              className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs shadow-md shadow-amber-500/20 transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+            >
+              <Compass className="w-4 h-4" />
+              <span>{isSubmitting ? 'Igniting Hearth...' : 'Start Solo Caravan (1-Click)'}</span>
+            </button>
+          </div>
+        )}
 
         {/* Tab switcher */}
         <div className="flex border-b border-stone-800 mb-4">
@@ -99,7 +136,7 @@ export const CaravanModal: React.FC<CaravanModalProps> = ({
                 : 'border-transparent text-stone-400 hover:text-stone-200'
             }`}
           >
-            Found New Caravan
+            Custom Caravan
           </button>
           <button
             type="button"
@@ -113,7 +150,7 @@ export const CaravanModal: React.FC<CaravanModalProps> = ({
                 : 'border-transparent text-stone-400 hover:text-stone-200'
             }`}
           >
-            Join with Invite Code
+            Join with Code
           </button>
         </div>
 
@@ -134,19 +171,19 @@ export const CaravanModal: React.FC<CaravanModalProps> = ({
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., The Mountain Striders"
+                placeholder="e.g., The Solstice Pilgrims"
                 className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
               />
             </div>
             <div>
               <label className="block text-xs font-semibold text-stone-300 mb-1">
-                Caravan Motto / Vow:
+                Motto / Vow:
               </label>
               <input
                 type="text"
                 value={motto}
                 onChange={(e) => setMotto(e.target.value)}
-                placeholder="e.g., Through every storm, our embers endure."
+                placeholder="e.g., Together through deep snows, our embers endure."
                 className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
               />
             </div>
