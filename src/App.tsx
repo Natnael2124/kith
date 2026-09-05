@@ -8,6 +8,8 @@ import { CampfireHUD } from './components/Campfire/CampfireHUD';
 import { PartyRoster } from './components/Party/PartyRoster';
 import { QuestList } from './components/Quests/QuestList';
 import { ActivityFeed } from './components/Logs/ActivityFeed';
+import { FocusTimer } from './components/Focus/FocusTimer';
+import { ProgressionVisuals } from './components/Analytics/ProgressionVisuals';
 import { QuestAlchemistModal } from './components/Alchemist/QuestAlchemistModal';
 import { SettingsModal } from './components/Settings/SettingsModal';
 import { AuthModal } from './components/Auth/AuthModal';
@@ -18,14 +20,14 @@ import {
   Moon,
   Sparkles,
   Users,
-  ArrowRight,
+  Clock,
 } from 'lucide-react';
 
 const MainContent: React.FC = () => {
   const { user, profile, loading, toggleRestMode } = useAuth();
-  const { caravan, quests, logs } = useCaravan();
+  const { caravan } = useCaravan();
 
-  const [activeTab, setActiveTab] = useState<'hearth' | 'quests' | 'logs'>('hearth');
+  const [activeTab, setActiveTab] = useState<'hearth' | 'focus' | 'journey'>('hearth');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isAlchemistOpen, setIsAlchemistOpen] = useState(false);
@@ -90,7 +92,6 @@ const MainContent: React.FC = () => {
   }
 
   const campfireLevel = caravan?.campfire_level ?? 75;
-  const completedToday = quests.filter((q) => q.is_completed).length;
 
   return (
     <div className="min-h-screen bg-[#0c0a09] text-stone-100 flex flex-col selection:bg-amber-500 selection:text-stone-950 font-sans">
@@ -168,11 +169,11 @@ const MainContent: React.FC = () => {
                   {/* Quick Action Buttons */}
                   <div className="flex flex-wrap gap-2.5 pt-2">
                     <button
-                      onClick={() => setActiveTab('quests')}
+                      onClick={() => setActiveTab('focus')}
                       className="flex-1 min-w-[140px] py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-stone-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-1.5"
                     >
-                      <Flame className="w-4 h-4 fill-stone-950" />
-                      <span>Tend Fire (Daily Quests)</span>
+                      <Clock className="w-4 h-4 fill-stone-950" />
+                      <span>Start Focus Sprint (Pomodoro)</span>
                     </button>
 
                     <button
@@ -180,7 +181,7 @@ const MainContent: React.FC = () => {
                       className="py-2.5 px-4 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 font-semibold text-xs transition flex items-center justify-center gap-1.5"
                     >
                       <Sparkles className="w-4 h-4 text-purple-400" />
-                      <span>AI Quest Alchemist</span>
+                      <span>Consult Alchemist</span>
                     </button>
 
                     <button
@@ -188,120 +189,46 @@ const MainContent: React.FC = () => {
                       className="py-2.5 px-4 rounded-xl bg-stone-900 hover:bg-stone-800 text-stone-300 border border-stone-800 font-semibold text-xs transition flex items-center justify-center gap-1.5"
                     >
                       <Users className="w-4 h-4 text-amber-400" />
-                      <span>Switch Caravan</span>
+                      <span>Fellowship</span>
                     </button>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Two Column Grid: Companions & Quests Overview */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Left Column: Party Companions Roster */}
-              <div className="lg:col-span-7">
+            {/* Two Column Grid: Companions & Quests Checklist */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Left Column: Party Companions & Activity Feed */}
+              <div className="lg:col-span-6 space-y-6">
                 <PartyRoster />
+                <div className="bg-stone-900/80 border border-stone-800/80 rounded-2xl p-5 shadow-xl backdrop-blur-md">
+                  <ActivityFeed />
+                </div>
               </div>
 
-              {/* Right Column: Daily Quests Overview & Recent Deeds */}
-              <div className="lg:col-span-5 space-y-6">
-                {/* Quests Glance Card */}
-                <div className="bg-stone-900/80 border border-stone-800/80 rounded-2xl p-5 shadow-xl backdrop-blur-md">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-base font-bold text-stone-100 flex items-center gap-2">
-                      <Flame className="w-4 h-4 text-amber-400" />
-                      <span>Today's Rituals</span>
-                    </h3>
-                    <button
-                      onClick={() => setActiveTab('quests')}
-                      className="text-xs text-amber-400 hover:underline font-semibold flex items-center gap-1"
-                    >
-                      <span>View All ({quests.length})</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <div className="space-y-2.5">
-                    {quests.slice(0, 3).map((q) => (
-                      <div
-                        key={q.id}
-                        className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs ${
-                          q.is_completed
-                            ? 'bg-stone-950/40 border-stone-800/60 opacity-70 line-through text-stone-500'
-                            : 'bg-stone-950/60 border-stone-800 text-stone-200'
-                        }`}
-                      >
-                        <span className="truncate">{q.title}</span>
-                        <span className="shrink-0 text-[10px] text-amber-400 font-semibold bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                          +{q.campfire_value}% Fire
-                        </span>
-                      </div>
-                    ))}
-                    {quests.length === 0 && (
-                      <p className="text-xs text-stone-500 italic py-2 text-center">
-                        No quests active today. Chart a new quest to feed the hearth!
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="mt-4 pt-3 border-t border-stone-800/60 flex items-center justify-between text-xs text-stone-400">
-                    <span>
-                      {completedToday} of {quests.length} completed today
-                    </span>
-                    <button
-                      onClick={() => setActiveTab('quests')}
-                      className="text-stone-300 hover:text-white font-medium underline"
-                    >
-                      Open Quest Log
-                    </button>
-                  </div>
-                </div>
-
-                {/* Recent Feed Snippet */}
-                <div className="bg-stone-900/80 border border-stone-800/80 rounded-2xl p-5 shadow-xl backdrop-blur-md">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-base font-bold text-stone-100">Expedition Feed</h3>
-                    <button
-                      onClick={() => setActiveTab('logs')}
-                      className="text-xs text-amber-400 hover:underline font-semibold flex items-center gap-1"
-                    >
-                      <span>Full Feed</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    {logs.slice(0, 2).map((l) => (
-                      <div
-                        key={l.id}
-                        className="text-xs p-2.5 rounded-xl bg-stone-950/50 border border-stone-800 text-stone-300 leading-relaxed"
-                      >
-                        <strong className="text-amber-400">{l.author_name || 'Companion'}:</strong>{' '}
-                        {l.message}
-                      </div>
-                    ))}
-                    {logs.length === 0 && (
-                      <p className="text-xs text-stone-500 italic py-2 text-center">
-                        The expedition log is quiet. Complete a quest or kindle a companion to write the first entry!
-                      </p>
-                    )}
-                  </div>
-                </div>
+              {/* Right Column: Daily Quest Checklist */}
+              <div className="lg:col-span-6 space-y-6">
+                <QuestList onOpenAlchemist={() => setIsAlchemistOpen(true)} />
               </div>
             </div>
           </div>
         )}
 
-        {/* TAB 2: MY QUESTS & HABITS */}
-        {activeTab === 'quests' && (
+        {/* TAB 2: INTENTIONAL FOCUS SESSIONS */}
+        {activeTab === 'focus' && (
           <div className="space-y-6">
-            <QuestList onOpenAlchemist={() => setIsAlchemistOpen(true)} />
+            <FocusTimer
+              onNavigateJourney={() => setActiveTab('journey')}
+            />
           </div>
         )}
 
-        {/* TAB 3: EXPEDITION LOGS & CHRONICLER */}
-        {activeTab === 'logs' && (
+        {/* TAB 3: JOURNEY & PROGRESSION VISUALS */}
+        {activeTab === 'journey' && (
           <div className="space-y-6">
-            <ActivityFeed />
+            <ProgressionVisuals
+              onStartFocus={() => setActiveTab('focus')}
+            />
           </div>
         )}
       </main>

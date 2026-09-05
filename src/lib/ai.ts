@@ -1,4 +1,4 @@
-import { AISettings, CaravanLog, Profile, QuestCategory } from '../types';
+import { AISettings, CaravanLog, FocusEvaluationResult, Profile, QuestCategory, AIProvider } from '../types';
 
 const AI_STORAGE_KEY = 'kith_ai_settings';
 
@@ -138,6 +138,73 @@ Do not use bullet points or titles; write it like a cozy fantasy adventure chron
   return await requestAI(settings, prompt);
 }
 
+// 1. Goal Breakdown Routine (Parses high-level goals into 3–5 bite-sized daily quests)
+export async function breakdownGoal(
+  goalText: string,
+  apiKey?: string,
+  provider?: AIProvider,
+  model?: string,
+  customEndpoint?: string
+): Promise<Array<{
+  title: string;
+  category: QuestCategory;
+  xp_value: number;
+  campfire_value: number;
+}>> {
+  const stored = getStoredAISettings();
+  const effectiveSettings: AISettings = {
+    apiKey: (apiKey ?? stored.apiKey).trim(),
+    provider: provider ?? stored.provider ?? 'gemini',
+    model: (model ?? stored.model)?.trim(),
+    customEndpoint: (customEndpoint ?? stored.customEndpoint)?.trim(),
+  };
+
+  if (!effectiveSettings.apiKey && effectiveSettings.provider !== 'custom') {
+    return generateProceduralQuests(goalText);
+  }
+
+  const prompt = `You are the AI Quest Alchemist in the cooperative life-gamification app "Kith".
+The companion has pledged this goal: "${goalText}".
+Break this down into 3 to 5 bite-sized, actionable daily habits.
+Assign each habit to one of the four sacred pillars:
+- "Intellect": study, deliberate focus, reading, deep work
+- "Vitality": physical movement, nutrition, rest, outdoor energy
+- "Clarity": mindfulness, emotional balance, reflection, decluttering
+- "Craft": creative execution, making, building, hands-on practice
+
+Return ONLY a valid JSON array of objects with this exact structure:
+[
+  {
+    "title": "Clear concise habit title (max 60 chars)",
+    "category": "Intellect" | "Vitality" | "Clarity" | "Craft",
+    "xp_value": integer between 20 and 35,
+    "campfire_value": integer between 15 and 25
+  }
+]
+Do not include markdown codeblocks or extra text.`;
+
+  try {
+    const raw = await requestAI(effectiveSettings, prompt);
+    const cleaned = raw.replace(/```json/g, '').replace(/```/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed.slice(0, 5).map((item) => ({
+        title: String(item.title || 'Daily practice').slice(0, 80),
+        category: ['Intellect', 'Vitality', 'Clarity', 'Craft'].includes(item.category)
+          ? item.category
+          : 'Intellect',
+        xp_value: Math.max(15, Math.min(50, Number(item.xp_value) || 25)),
+        campfire_value: Math.max(10, Math.min(30, Number(item.campfire_value) || 15)),
+      }));
+    }
+  } catch (err) {
+    console.warn('AI breakdown failed, falling back to procedural quests:', err);
+  }
+
+  return generateProceduralQuests(goalText);
+}
+
+// Backwards compatibility alias for QuestAlchemistModal
 export async function callAIQuestAlchemist(
   settings: AISettings,
   goal: string
@@ -147,57 +214,109 @@ export async function callAIQuestAlchemist(
   xp_value: number;
   campfire_value: number;
 }>> {
-  if (!settings.apiKey) {
-    return generateProceduralQuests(goal);
+  return breakdownGoal(goal, settings.apiKey, settings.provider, settings.model, settings.customEndpoint);
+}
+
+// 2. Focus Session Follow-Through Arbiter (Evaluates output quality & returns rating_delta + feedback)
+export async function evaluateFocusSession(
+  session: {
+    target: string;
+    outcome: string | null;
+    durationMinutes: number;
+  },
+  apiKey?: string,
+  provider?: AIProvider,
+  model?: string,
+  customEndpoint?: string
+): Promise<FocusEvaluationResult> {
+  const stored = getStoredAISettings();
+  const effectiveSettings: AISettings = {
+    apiKey: (apiKey ?? stored.apiKey).trim(),
+    provider: provider ?? stored.provider ?? 'gemini',
+    model: (model ?? stored.model)?.trim(),
+    customEndpoint: (customEndpoint ?? stored.customEndpoint)?.trim(),
+  };
+
+  const outcomeTrimmed = (session.outcome || '').trim();
+
+  // Automatic heuristic fallback if no key or custom endpoint
+  const evaluateHeuristic = (): FocusEvaluationResult => {
+    if (!outcomeTrimmed || outcomeTrimmed.toLowerCase() === 'skipped' || outcomeTrimmed.toLowerCase() === 'none') {
+      return {
+        rating_delta: 0,
+        feedback: 'A quiet rest on the trail. The campfire remains steady while you regroup for your next expedition.',
+      };
+    }
+
+    if (outcomeTrimmed.length < 15) {
+      return {
+        rating_delta: 15,
+        feedback: 'Modest progress logged. Steady small strides keep the caravan moving forward.',
+      };
+    }
+
+    if (outcomeTrimmed.length >= 80 && session.durationMinutes >= 25) {
+      return {
+        rating_delta: 28,
+        feedback: 'Exceptional follow-through! You honored your focus vow with precision and added radiant light to the hearth.',
+      };
+    }
+
+    return {
+      rating_delta: 20,
+      feedback: 'Honorable dedication to your intent. Your deliberate focus keeps our companions inspired.',
+    };
+  };
+
+  if (!effectiveSettings.apiKey && effectiveSettings.provider !== 'custom') {
+    return evaluateHeuristic();
   }
 
-  const prompt = `You are the AI Quest Alchemist in the life-gamification app "Kith".
-The user has set this real-life goal: "${goal}".
-Break down this goal into 4 to 5 balanced, actionable daily quests.
-Categorize each quest into one of the four sacred pillars:
-- "Intellect": study, deliberate focus, reading, analysis
-- "Vitality": physical movement, nutrition, rest, outdoor energy
-- "Clarity": mindfulness, emotional balance, reflection, decluttering
-- "Craft": creative work, making, building, hands-on practice
+  const prompt = `You are the wise Arbiter of Discipline and companion mentor in the life-gamification app "Kith".
+A companion just completed an intentional focus block.
+- Focus Duration: ${session.durationMinutes} minutes
+- Pre-Session Intent: "${session.target}"
+- Logged Outcome: "${outcomeTrimmed || '(No outcome reported)'}"
 
-Return ONLY a valid JSON array of objects with this exact structure:
-[
-  {
-    "title": "Clear concise habit title",
-    "category": "Intellect" | "Vitality" | "Clarity" | "Craft",
-    "xp_value": 20 to 35,
-    "campfire_value": 15 to 25
-  }
-]
-Do not include markdown codeblocks or extra text.`;
+Evaluate the companion's follow-through, honesty, and output quality.
+Return ONLY valid JSON with this exact schema:
+{
+  "rating_delta": integer between -15 and 35,
+  "feedback": "1 to 2 concise, honest sentences in cozy companion voice"
+}
+
+Scoring rules for rating_delta:
+- +26 to +35: Outstanding execution, exceeded or thoroughly fulfilled the vow.
+- +18 to +25: Solid, honest completion of the stated intent.
+- +5 to +17: Partial completion, faced friction but still made progress.
+- 0: Skipped or minimal effort logged.
+- -5 to -15: Completely deserted the intent or logged frivolous distraction.
+Do not wrap in markdown tags or add explanations.`;
 
   try {
-    const raw = await requestAI(settings, prompt);
+    const raw = await requestAI(effectiveSettings, prompt);
     const cleaned = raw.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(cleaned);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed.map((item) => ({
-        title: item.title || 'Daily practice',
-        category: ['Intellect', 'Vitality', 'Clarity', 'Craft'].includes(item.category)
-          ? item.category
-          : 'Intellect',
-        xp_value: Number(item.xp_value) || 25,
-        campfire_value: Number(item.campfire_value) || 15,
-      }));
+    if (typeof parsed.rating_delta === 'number') {
+      const delta = Math.max(-15, Math.min(35, Math.round(parsed.rating_delta)));
+      const feedback = typeof parsed.feedback === 'string' && parsed.feedback.trim()
+        ? parsed.feedback.trim()
+        : 'Your focus adds vital warmth to the caravan embers.';
+      return { rating_delta: delta, feedback };
     }
   } catch (err) {
-    console.warn('Failed to parse AI response, falling back to procedural quests:', err);
+    console.warn('AI evaluation error, falling back to heuristic:', err);
   }
 
-  return generateProceduralQuests(goal);
+  return evaluateHeuristic();
 }
 
 async function requestAI(settings: AISettings, prompt: string): Promise<string> {
-  const { provider, apiKey } = settings;
+  const { provider, apiKey, model, customEndpoint } = settings;
 
   if (provider === 'gemini') {
-    const model = settings.model || 'gemini-2.5-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const targetModel = model?.trim() || 'gemini-2.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey}`;
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -223,7 +342,7 @@ async function requestAI(settings: AISettings, prompt: string): Promise<string> 
   }
 
   if (provider === 'openai') {
-    const model = settings.model || 'gpt-4o-mini';
+    const targetModel = model?.trim() || 'gpt-4o-mini';
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -231,7 +350,7 @@ async function requestAI(settings: AISettings, prompt: string): Promise<string> 
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model,
+        model: targetModel,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.7,
       }),
@@ -247,7 +366,7 @@ async function requestAI(settings: AISettings, prompt: string): Promise<string> 
   }
 
   if (provider === 'claude') {
-    const model = settings.model || 'claude-3-5-sonnet-latest';
+    const targetModel = model?.trim() || 'claude-3-5-sonnet-latest';
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -257,7 +376,7 @@ async function requestAI(settings: AISettings, prompt: string): Promise<string> 
         'dangerously-allow-browser': 'true',
       },
       body: JSON.stringify({
-        model,
+        model: targetModel,
         max_tokens: 800,
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -270,6 +389,35 @@ async function requestAI(settings: AISettings, prompt: string): Promise<string> 
 
     const data = await res.json();
     return data.content?.[0]?.text || '';
+  }
+
+  if (provider === 'custom') {
+    const endpoint = customEndpoint?.trim() || 'http://localhost:11434/v1/chat/completions';
+    const targetModel = model?.trim() || 'default';
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (apiKey?.trim()) {
+      headers['Authorization'] = `Bearer ${apiKey.trim()}`;
+    }
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: targetModel,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+      }),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(`Custom AI error (${res.status}): ${errData.error?.message || res.statusText}`);
+    }
+
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || data.response || '';
   }
 
   throw new Error(`Unsupported AI provider: ${provider}`);

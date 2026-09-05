@@ -17,8 +17,14 @@ create table if not exists public.profiles (
   streak_days int default 0,
   is_resting boolean default false,
   caravan_id uuid,
+  rating int default 1200,
+  peak_rating int default 1200,
   created_at timestamp with time zone default now()
 );
+
+-- Ensure rating columns exist on existing profiles table
+alter table public.profiles add column if not exists rating int default 1200;
+alter table public.profiles add column if not exists peak_rating int default 1200;
 
 -- 2. Caravans Table
 create table if not exists public.caravans (
@@ -66,6 +72,19 @@ create table if not exists public.caravan_logs (
   created_at timestamp with time zone default now()
 );
 
+-- 5. Focus Sessions Table (Intentional Pomodoro & Dynamic Rating)
+create table if not exists public.focus_sessions (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  target_intent text not null,
+  actual_outcome text,
+  duration_minutes int default 25,
+  rating_delta int default 0,
+  new_rating int default 1200,
+  feedback text,
+  created_at timestamp with time zone default now()
+);
+
 -- ==============================================================================
 -- Row-Level Security (RLS) Policies
 -- ==============================================================================
@@ -73,6 +92,7 @@ alter table public.profiles enable row level security;
 alter table public.caravans enable row level security;
 alter table public.quests enable row level security;
 alter table public.caravan_logs enable row level security;
+alter table public.focus_sessions enable row level security;
 
 -- Profiles policies
 drop policy if exists "Public profiles are viewable by everyone" on public.profiles;
@@ -108,6 +128,13 @@ create policy "Caravan logs viewable by all members" on public.caravan_logs for 
 drop policy if exists "Authenticated users can post caravan logs" on public.caravan_logs;
 create policy "Authenticated users can post caravan logs" on public.caravan_logs for insert with check (auth.role() = 'authenticated');
 
+-- Focus sessions policies
+drop policy if exists "Users can manage own focus sessions" on public.focus_sessions;
+create policy "Users can manage own focus sessions" on public.focus_sessions for all using (auth.uid() = user_id);
+
+drop policy if exists "Focus sessions viewable by caravan members" on public.focus_sessions;
+create policy "Focus sessions viewable by caravan members" on public.focus_sessions for select using (true);
+
 -- ==============================================================================
 -- Auth Trigger: Auto-create public.profiles record when a user signs up
 -- ==============================================================================
@@ -140,3 +167,4 @@ alter publication supabase_realtime add table public.caravans;
 alter publication supabase_realtime add table public.quests;
 alter publication supabase_realtime add table public.caravan_logs;
 alter publication supabase_realtime add table public.profiles;
+alter publication supabase_realtime add table public.focus_sessions;

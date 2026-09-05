@@ -29,6 +29,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const initialAI = getStoredAISettings();
   const [provider, setProvider] = useState<AIProvider>(initialAI.provider);
   const [apiKey, setApiKey] = useState(initialAI.apiKey);
+  const [model, setModel] = useState(
+    initialAI.model ||
+      (initialAI.provider === 'gemini'
+        ? 'gemini-2.5-flash'
+        : initialAI.provider === 'openai'
+        ? 'gpt-4o-mini'
+        : initialAI.provider === 'claude'
+        ? 'claude-3-5-sonnet-latest'
+        : 'default')
+  );
+  const [customEndpoint, setCustomEndpoint] = useState(initialAI.customEndpoint || '');
   const [aiTestResult, setAiTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [isTestingAI, setIsTestingAI] = useState(false);
   const [aiSaved, setAiSaved] = useState(false);
@@ -44,17 +55,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   if (!isOpen) return null;
 
+  const handleProviderSelect = (newProvider: AIProvider) => {
+    setProvider(newProvider);
+    setAiTestResult(null);
+    if (newProvider === 'gemini') {
+      setModel('gemini-2.5-flash');
+    } else if (newProvider === 'openai') {
+      setModel('gpt-4o-mini');
+    } else if (newProvider === 'claude') {
+      setModel('claude-3-5-sonnet-latest');
+    } else if (newProvider === 'custom') {
+      setModel('default');
+      if (!customEndpoint) setCustomEndpoint('http://localhost:11434/v1/chat/completions');
+    }
+  };
+
   // AI Save
   const handleSaveAI = () => {
     saveStoredAISettings({
       provider,
       apiKey: apiKey.trim(),
-      model:
-        provider === 'gemini'
-          ? 'gemini-2.5-flash'
-          : provider === 'openai'
-          ? 'gpt-4o-mini'
-          : 'claude-3-5-sonnet-latest',
+      model: model.trim(),
+      customEndpoint: customEndpoint.trim(),
     });
     setAiSaved(true);
     setTimeout(() => setAiSaved(false), 2000);
@@ -62,7 +84,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   // AI Test
   const handleTestAI = async () => {
-    if (!apiKey.trim()) {
+    if (!apiKey.trim() && provider !== 'custom') {
       setAiTestResult({ ok: false, message: 'Please enter an API key first.' });
       return;
     }
@@ -71,8 +93,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
     try {
       if (provider === 'gemini') {
+        const targetModel = model.trim() || 'gemini-2.5-flash';
         const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey.trim()}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey.trim()}`,
           {
             method: 'POST',
             headers: {
@@ -88,18 +111,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           const err = await res.json().catch(() => ({}));
           throw new Error(err.error?.message || `HTTP ${res.status}`);
         }
-        setAiTestResult({ ok: true, message: 'Success! Connected to Gemini 2.5 Flash API.' });
+        setAiTestResult({ ok: true, message: `Success! Connected to Gemini (${targetModel}).` });
       } else if (provider === 'openai') {
         const res = await fetch('https://api.openai.com/v1/models', {
           headers: { Authorization: `Bearer ${apiKey.trim()}` },
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        setAiTestResult({ ok: true, message: 'Success! Connected to OpenAI API.' });
+        setAiTestResult({ ok: true, message: `Success! Connected to OpenAI API.` });
       } else if (provider === 'claude') {
         setAiTestResult({
           ok: true,
-          message: 'Key saved. Claude calls will run with dangerously-allow-browser.',
+          message: 'Key saved. Claude requests will execute with configured model.',
         });
+      } else if (provider === 'custom') {
+        const endpoint = customEndpoint.trim() || 'http://localhost:11434/v1/chat/completions';
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (apiKey.trim()) headers['Authorization'] = `Bearer ${apiKey.trim()}`;
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model: model.trim() || 'default',
+            messages: [{ role: 'user', content: 'Ping' }],
+          }),
+        });
+        if (!res.ok) throw new Error(`Endpoint returned HTTP ${res.status}`);
+        setAiTestResult({ ok: true, message: `Success! Connected to custom endpoint.` });
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -201,38 +238,75 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 <label className="block text-xs font-semibold text-stone-300 mb-1.5">
                   Select AI Provider:
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {(
                     [
                       { id: 'gemini', label: 'Google Gemini', sub: 'Gemini 2.5 Flash' },
                       { id: 'openai', label: 'OpenAI', sub: 'GPT-4o-mini' },
                       { id: 'claude', label: 'Anthropic Claude', sub: 'Claude 3.5' },
+                      { id: 'custom', label: 'Custom / Local', sub: 'Ollama, vLLM, OpenRouter' },
                     ] as const
                   ).map(({ id, label, sub }) => (
                     <button
                       key={id}
                       type="button"
-                      onClick={() => setProvider(id)}
-                      className={`p-3 rounded-xl border text-left transition ${
+                      onClick={() => handleProviderSelect(id)}
+                      className={`p-2.5 rounded-xl border text-left transition ${
                         provider === id
                           ? 'bg-amber-500/10 border-amber-500/40 text-amber-300'
                           : 'bg-stone-950/40 border-stone-800 text-stone-400 hover:text-stone-200'
                       }`}
                     >
-                      <div className="text-xs font-bold">{label}</div>
-                      <div className="text-[10px] text-stone-500 mt-0.5">{sub}</div>
+                      <div className="text-xs font-bold truncate">{label}</div>
+                      <div className="text-[10px] text-stone-500 mt-0.5 truncate">{sub}</div>
                     </button>
                   ))}
                 </div>
               </div>
 
+              {provider === 'custom' && (
+                <div>
+                  <label className="block text-xs font-semibold text-stone-300 mb-1">
+                    Custom Endpoint URL (OpenAI-compatible):
+                  </label>
+                  <input
+                    type="text"
+                    value={customEndpoint}
+                    onChange={(e) => setCustomEndpoint(e.target.value)}
+                    placeholder="http://localhost:11434/v1/chat/completions"
+                    className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
+                  />
+                  <p className="text-[10px] text-stone-500 mt-1">
+                    Connects directly to local Ollama, LM Studio, vLLM, or OpenRouter.
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-xs font-semibold text-stone-300">
+                    Model Identifier:
+                  </label>
+                  <span className="text-[10px] text-stone-500">Fully customizable</span>
+                </div>
+                <input
+                  type="text"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder="e.g., gemini-2.5-flash, gpt-4o-mini, claude-3-5-sonnet-latest"
+                  className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-stone-300 mb-1.5">
                   {provider === 'gemini'
-                    ? 'Google Gemini API Key (Get free at aistudio.google.com):'
+                    ? 'Google Gemini API Key (Free at aistudio.google.com):'
                     : provider === 'openai'
                     ? 'OpenAI API Key (sk-...):'
-                    : 'Anthropic API Key (sk-ant-...):'}
+                    : provider === 'claude'
+                    ? 'Anthropic API Key (sk-ant-...):'
+                    : 'Authorization Bearer Key (Optional for local):'}
                 </label>
                 <div className="flex gap-2">
                   <input

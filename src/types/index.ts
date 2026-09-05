@@ -11,6 +11,25 @@ export interface Profile {
   is_resting: boolean;
   caravan_id: string | null;
   created_at: string;
+  rating?: number;
+  peak_rating?: number;
+}
+
+export interface FocusSession {
+  id: string;
+  user_id: string;
+  target_intent: string;
+  actual_outcome: string | null;
+  duration_minutes: number;
+  rating_delta: number;
+  new_rating: number;
+  feedback: string | null;
+  created_at: string;
+}
+
+export interface FocusEvaluationResult {
+  rating_delta: number;
+  feedback: string;
 }
 
 export interface Caravan {
@@ -52,12 +71,13 @@ export interface CaravanLog {
   created_at: string;
 }
 
-export type AIProvider = 'gemini' | 'openai' | 'claude';
+export type AIProvider = 'gemini' | 'openai' | 'claude' | 'custom';
 
 export interface AISettings {
   provider: AIProvider;
   apiKey: string;
   model?: string;
+  customEndpoint?: string;
 }
 
 export interface SupabaseConfig {

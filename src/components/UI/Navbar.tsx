@@ -1,21 +1,21 @@
-import React from 'react';
 import {
   Flame,
   Moon,
   Sun,
   Settings,
-  CheckCircle2,
-  BookOpen,
+  Clock,
+  TrendingUp,
   LogOut,
   LogIn,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCaravan } from '../../context/CaravanContext';
 import { ARCHETYPES } from '../../lib/constants';
+import { getRatingTier } from '../../lib/focusStorage';
 
 interface NavbarProps {
-  activeTab: 'hearth' | 'quests' | 'logs';
-  onSelectTab: (tab: 'hearth' | 'quests' | 'logs') => void;
+  activeTab: 'hearth' | 'focus' | 'journey';
+  onSelectTab: (tab: 'hearth' | 'focus' | 'journey') => void;
   onOpenSettings: () => void;
   onOpenAuth: () => void;
 }
@@ -30,6 +30,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const { caravan } = useCaravan();
 
   const archetypeInfo = profile ? ARCHETYPES[profile.archetype] : ARCHETYPES.Wayfarer;
+  const ratingTier = profile ? getRatingTier(profile.rating ?? 1200) : null;
   const currentXp = profile?.total_xp || 0;
   const currentLevelBase = ((profile?.level || 1) - 1) * 200;
   const xpInLevel = Math.max(0, currentXp - currentLevelBase);
@@ -78,27 +79,27 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           <button
-            onClick={() => onSelectTab('quests')}
+            onClick={() => onSelectTab('focus')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition ${
-              activeTab === 'quests'
+              activeTab === 'focus'
                 ? 'bg-amber-500 text-stone-950 shadow-md shadow-amber-500/20'
                 : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/50'
             }`}
           >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>My Quests</span>
+            <Clock className="w-3.5 h-3.5" />
+            <span>Focus Block</span>
           </button>
 
           <button
-            onClick={() => onSelectTab('logs')}
+            onClick={() => onSelectTab('journey')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition ${
-              activeTab === 'logs'
+              activeTab === 'journey'
                 ? 'bg-amber-500 text-stone-950 shadow-md shadow-amber-500/20'
                 : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/50'
             }`}
           >
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>Expedition Feed</span>
+            <TrendingUp className="w-3.5 h-3.5" />
+            <span>Journey</span>
           </button>
         </nav>
 
@@ -150,6 +151,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                   >
                     Lvl {profile.level}
                   </span>
+                  {ratingTier && (
+                    <span
+                      className={`text-[9px] px-1.5 py-0.2 rounded font-semibold border font-mono ${ratingTier.bgBadge} ${ratingTier.accentBorder}`}
+                      style={{ color: ratingTier.color }}
+                      title={`Discipline Rating: ${profile.rating ?? 1200} (${ratingTier.tier})`}
+                    >
+                      {profile.rating ?? 1200}
+                    </span>
+                  )}
                 </div>
                 {/* Mini XP progress */}
                 <div className="w-20 bg-stone-950 rounded-full h-1 mt-1 overflow-hidden">
@@ -206,26 +216,26 @@ export const Navbar: React.FC<NavbarProps> = ({
           <span>Hearth</span>
         </button>
         <button
-          onClick={() => onSelectTab('quests')}
+          onClick={() => onSelectTab('focus')}
           className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-lg transition ${
-            activeTab === 'quests'
+            activeTab === 'focus'
               ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
               : 'text-stone-400'
           }`}
         >
-          <CheckCircle2 className="w-3.5 h-3.5" />
-          <span>Quests</span>
+          <Clock className="w-3.5 h-3.5" />
+          <span>Focus</span>
         </button>
         <button
-          onClick={() => onSelectTab('logs')}
+          onClick={() => onSelectTab('journey')}
           className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-lg transition ${
-            activeTab === 'logs'
+            activeTab === 'journey'
               ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
               : 'text-stone-400'
           }`}
         >
-          <BookOpen className="w-3.5 h-3.5" />
-          <span>Feed</span>
+          <TrendingUp className="w-3.5 h-3.5" />
+          <span>Journey</span>
         </button>
       </div>
     </header>
